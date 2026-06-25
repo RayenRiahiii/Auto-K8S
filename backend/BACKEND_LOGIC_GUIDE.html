@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>auto-K8S Backend Logic Guide</title>
+  <style>
+    :root {
+      --bg: #0a0a0c;
+      --panel: #141418;
+      --panel-2: #1c1c22;
+      --text: #f5f5f7;
+      --muted: #b8b8c2;
+      --red: #d61f1f;
+      --red-soft: #ff4d4d;
+      --border: #2b2b33;
+      --code: #0f1115;
+      --ok: #16a34a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(214, 31, 31, 0.18), transparent 28%),
+        radial-gradient(circle at top left, rgba(255, 77, 77, 0.08), transparent 22%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, rgba(214, 31, 31, 0.22), rgba(20, 20, 24, 0.95));
+      border: 1px solid rgba(255, 77, 77, 0.25);
+      border-radius: 18px;
+      padding: 28px;
+      margin-bottom: 28px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(214, 31, 31, 0.15);
+      border: 1px solid rgba(255, 77, 77, 0.35);
+      color: #ffd0d0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      margin-top: 0;
+      color: #fff;
+    }
+
+    h1 {
+      font-size: 2.3rem;
+      margin: 14px 0 10px;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-bottom: 14px;
+      border-left: 4px solid var(--red);
+      padding-left: 12px;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      margin-bottom: 10px;
+    }
+
+    p, li {
+      color: var(--muted);
+    }
+
+    section {
+      background: linear-gradient(180deg, rgba(28, 28, 34, 0.96), rgba(20, 20, 24, 0.96));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: #ffe3e3;
+    }
+
+    pre {
+      margin: 0;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+      color: #f3f4f6;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 12px;
+      margin-top: 10px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    th {
+      color: #fff;
+      background: rgba(214, 31, 31, 0.12);
+    }
+
+    .flow {
+      padding-left: 18px;
+    }
+
+    .good {
+      color: #b6f2c5;
+    }
+
+    .small {
+      font-size: 0.95rem;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+        color: #000;
+      }
+
+      section, .hero, .card {
+        box-shadow: none;
+        background: #fff;
+        border: 1px solid #ccc;
+      }
+
+      p, li, code, pre, td, th {
+        color: #000;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <span class="badge">auto-K8S Backend Guide</span>
+      <h1>Backend Logic, Packages, and Imports</h1>
+      <p>
+        This document explains the backend part of your <code>auto-K8S</code> project:
+        what each file does, how the Django API works, how the database is structured,
+        and how the backend launches an Ansible playbook through WSL to install Kubernetes on target machines.
+      </p>
+      <p class="small">
+        Open this file in a browser, then use <code>Ctrl+P</code> and choose <code>Save as PDF</code> if you want a PDF version.
+      </p>
+    </div>
+
+    <section>
+      <h2>1. Backend Goal</h2>
+      <p>The backend has one main job: receive data from the frontend, store machine and credential information in PostgreSQL, and trigger an Ansible playbook that installs Kubernetes on selected hosts.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>What the backend stores</h3>
+          <ul>
+            <li>Credentials used to connect by SSH</li>
+            <li>Hosts to manage</li>
+            <li>Playbook templates</li>
+            <li>Installation history and target results</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>What the backend exposes</h3>
+          <ul>
+            <li>REST API endpoints for hosts</li>
+            <li>Read endpoints for credentials and templates</li>
+            <li>An endpoint to launch an installation</li>
+            <li>An endpoint to read installation history</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>What the backend executes</h3>
+          <ul>
+            <li>Dynamic inventory generation</li>
+            <li>WSL path conversion</li>
+            <li><code>ansible-playbook</code> command execution</li>
+            <li>Capture of stdout and stderr for debugging</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Packages Needed</h2>
+      <p>The current backend dependencies are defined in <code>backend/requirements.txt</code>.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Why it is needed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Django</code></td>
+            <td>Main backend framework: project structure, ORM, settings, URLs, admin.</td>
+          </tr>
+          <tr>
+            <td><code>djangorestframework</code></td>
+            <td>Builds REST APIs more cleanly than plain Django views.</td>
+          </tr>
+          <tr>
+            <td><code>django-cors-headers</code></td>
+            <td>Lets the React frontend call the Django API from another origin like <code>http://localhost:5173</code>.</td>
+          </tr>
+          <tr>
+            <td><code>psycopg2-binary</code></td>
+            <td>PostgreSQL driver used by Django to connect to the database.</td>
+          </tr>
+          <tr>
+            <td><code>python-dotenv</code></td>
+            <td>Loads environment variables from a <code>.env</code> file.</td>
+          </tr>
+          <tr>
+            <td><code>asgiref</code>, <code>sqlparse</code>, <code>tzdata</code></td>
+            <td>Support packages used by Django.</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre>pip install -r requirements.txt</pre>
+    </section>
+
+    <section>
+      <h2>3. Important Imports and Why They Exist</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><code>settings.py</code></h3>
+          <pre>from pathlib import Path
+import os
+from dotenv import load_dotenv</pre>
+          <ul>
+            <li><code>Path</code>: builds file paths safely</li>
+            <li><code>os</code>: reads environment variables</li>
+            <li><code>load_dotenv</code>: loads values from <code>.env</code></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>models.py</code></h3>
+          <pre>from django.db import models</pre>
+          <ul>
+            <li><code>models</code>: defines database tables as Python classes</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>serializers.py</code></h3>
+          <pre>from rest_framework import serializers</pre>
+          <ul>
+            <li><code>serializers</code>: converts model objects to JSON and validates request data</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>views.py</code></h3>
+          <pre>from pathlib import Path
+from django.conf import settings
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view
+from rest_framework.response import Response</pre>
+          <ul>
+            <li><code>Path</code>: locates the Ansible repository</li>
+            <li><code>settings</code>: reads Django base path</li>
+            <li><code>get_object_or_404</code>: returns 404 automatically if an object does not exist</li>
+            <li><code>api_view</code>: declares allowed HTTP methods</li>
+            <li><code>Response</code>: sends JSON API responses cleanly</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>services.py</code></h3>
+          <pre>import subprocess
+import tempfile
+from pathlib import Path</pre>
+          <ul>
+            <li><code>subprocess</code>: runs <code>ansible-playbook</code> through WSL</li>
+            <li><code>tempfile</code>: creates a temporary inventory file</li>
+            <li><code>Path</code>: handles filesystem paths</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>urls.py</code></h3>
+          <pre>from django.urls import path
+from . import views</pre>
+          <ul>
+            <li><code>path</code>: maps URL routes to functions</li>
+            <li><code>views</code>: imports the API functions to expose them</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Settings Logic</h2>
+      <p><code>backend/settings.py</code> is where the backend is configured.</p>
+      <pre>INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'auto_K8S',
+    'rest_framework',
+    'corsheaders'
+]</pre>
+      <p>This means:</p>
+      <ul>
+        <li><code>auto_K8S</code> is your custom application.</li>
+        <li><code>rest_framework</code> allows you to build REST APIs.</li>
+        <li><code>corsheaders</code> allows your React app to call Django from another port.</li>
+      </ul>
+      <pre>MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    ...
+]</pre>
+      <p><code>CorsMiddleware</code> must be near the top so the CORS headers are added early.</p>
+      <pre>CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]</pre>
+      <p>This allows the Vite frontend to call the backend during local development.</p>
+      <pre>DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
+    }
+}</pre>
+      <p>The database connection values come from environment variables, not hardcoded values. That makes the project easier to move to another machine.</p>
+    </section>
+
+    <section>
+      <h2>5. Database Structure</h2>
+      <p>The database is intentionally simple. It stores only the information needed to launch Kubernetes installation.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Role</th>
+            <th>Main fields</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Credential</code></td>
+            <td>Stores how to connect to a host</td>
+            <td><code>name</code>, <code>auth_type</code>, <code>username</code>, <code>private_key</code>, <code>password</code>, <code>become_password</code></td>
+          </tr>
+          <tr>
+            <td><code>Host</code></td>
+            <td>Represents one target machine</td>
+            <td><code>name</code>, <code>hostname</code>, <code>ip_address</code>, <code>ssh_port</code>, <code>enabled</code>, <code>credential</code></td>
+          </tr>
+          <tr>
+            <td><code>InstallationTemplate</code></td>
+            <td>Represents a playbook choice</td>
+            <td><code>name</code>, <code>playbook_path</code>, <code>description</code></td>
+          </tr>
+          <tr>
+            <td><code>Installation</code></td>
+            <td>Represents one launch request</td>
+            <td><code>template</code>, <code>status</code>, <code>started_at</code>, <code>finished_at</code></td>
+          </tr>
+          <tr>
+            <td><code>InstallationTarget</code></td>
+            <td>Stores the result of one host inside one installation</td>
+            <td><code>installation</code>, <code>host</code>, <code>status</code>, <code>output</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Why this schema is good here</h3>
+      <ul>
+        <li>It separates connection data from host data. Several hosts can reuse the same credential.</li>
+        <li>It separates the playbook template from the execution history.</li>
+        <li>It keeps one global installation record and one per-target result record.</li>
+        <li>It is minimal and enough for launching installations and debugging failures.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6. Serializer Logic</h2>
+      <p>Serializers are the bridge between Python objects and JSON.</p>
+      <div class="grid">
+        <div class="card">
+          <h3><code>CredentialSerializer</code></h3>
+          <p>Validates credential data before it is saved.</p>
+          <ul>
+            <li>If <code>auth_type = ssh_key</code>, then <code>private_key</code> must be present.</li>
+            <li>If <code>auth_type = password</code>, then <code>password</code> must be present.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>HostSerializer</code></h3>
+          <p>Exposes host fields plus a read-only <code>credential_name</code> field for easier display in the frontend.</p>
+        </div>
+        <div class="card">
+          <h3><code>InstallationTemplateSerializer</code></h3>
+          <p>Returns playbook template information.</p>
+        </div>
+        <div class="card">
+          <h3><code>InstallationTargetSerializer</code></h3>
+          <p>Returns target execution information plus a read-only <code>host_name</code>.</p>
+        </div>
+        <div class="card">
+          <h3><code>InstallationSerializer</code></h3>
+          <p>Returns installation data plus nested targets and a read-only <code>template_name</code>.</p>
+        </div>
+      </div>
+      <p>Without serializers, the backend would need much more manual JSON and validation code.</p>
+    </section>
+
+    <section>
+      <h2>7. API Endpoints</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET</code>, <code>POST</code></td>
+            <td><code>/api/hosts/</code></td>
+            <td>List all hosts or create a new host</td>
+          </tr>
+          <tr>
+            <td><code>GET</code>, <code>PUT</code>, <code>PATCH</code>, <code>DELETE</code></td>
+            <td><code>/api/hosts/&lt;id&gt;/</code></td>
+            <td>Read, replace, partially update, or delete one host</td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/api/credentials/</code></td>
+            <td>List credentials</td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/api/templates/</code></td>
+            <td>List playbook templates</td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/api/installations/</code></td>
+            <td>List execution history</td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/api/installations/&lt;id&gt;/</code></td>
+            <td>Read one installation and its targets</td>
+          </tr>
+          <tr>
+            <td><code>POST</code></td>
+            <td><code>/api/installations/launch/</code></td>
+            <td>Launch the Ansible playbook for selected hosts</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>8. View Logic</h2>
+      <h3><code>hosts_list_create</code></h3>
+      <ul>
+        <li><code>GET</code>: reads all <code>Host</code> records and returns them as JSON.</li>
+        <li><code>POST</code>: validates request data with <code>HostSerializer</code> and saves a new host.</li>
+      </ul>
+
+      <h3><code>host_detail</code></h3>
+      <ul>
+        <li><code>GET</code>: returns one host.</li>
+        <li><code>PUT</code>: replaces the host with full new data.</li>
+        <li><code>PATCH</code>: updates only some fields.</li>
+        <li><code>DELETE</code>: removes the host.</li>
+      </ul>
+
+      <h3><code>credentials_list</code> and <code>templates_list</code></h3>
+      <p>These are simple read-only endpoints used by the frontend select boxes.</p>
+
+      <h3><code>installations_list</code> and <code>installation_detail</code></h3>
+      <p>These allow you to inspect past executions and debug output later.</p>
+
+      <h3><code>launch_installation</code></h3>
+      <p>This is the core backend function. It does all of the following:</p>
+      <ol class="flow">
+        <li>Reads <code>template_id</code> and <code>host_ids</code> from the request.</li>
+        <li>Validates that the template and hosts exist.</li>
+        <li>Creates one <code>Installation</code> row with status <code>pending</code>, then <code>running</code>.</li>
+        <li>Creates one <code>InstallationTarget</code> row for each selected host.</li>
+        <li>Builds a temporary dynamic inventory file.</li>
+        <li>Locates the Ansible repository on disk.</li>
+        <li>Calls <code>run_playbook()</code>.</li>
+        <li>Collects <code>stdout</code> and <code>stderr</code>.</li>
+        <li>Marks the installation and targets as <code>success</code> or <code>failed</code>.</li>
+        <li>Returns a detailed JSON response to the frontend.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>9. Service Layer Logic</h2>
+      <p>The backend keeps Ansible-related logic in <code>services.py</code>. This is good because the view stays smaller and more readable.</p>
+
+      <h3><code>build_inventory_file(hosts)</code></h3>
+      <p>This function creates a temporary YAML inventory for the selected hosts.</p>
+      <pre>all:
+  children:
+    selected_hosts:
+      hosts:
+        target2:
+          ansible_host: 192.168.100.133
+          ansible_port: 22
+          ansible_user: "target2"
+          ansible_password: "0000"
+          ansible_become_password: "0000"</pre>
+      <p>Why this was important:</p>
+      <ul>
+        <li>It avoids depending on a static inventory file.</li>
+        <li>It allows the web app to select hosts dynamically.</li>
+        <li>Using YAML avoids the earlier bug where <code>0000</code> became integer <code>0</code>.</li>
+      </ul>
+
+      <h3><code>windows_to_wsl_path(path)</code></h3>
+      <p>This converts a Windows path like <code>C:\Users\ASUS\...</code> into a WSL path like <code>/mnt/c/Users/ASUS/...</code>.</p>
+      <p>It is required because Django runs on Windows while Ansible is executed inside Ubuntu WSL.</p>
+
+      <h3><code>run_playbook(repo_root, playbook_relative_path, inventory_path)</code></h3>
+      <p>This function:</p>
+      <ul>
+        <li>Checks that the playbook, <code>ansible.cfg</code>, and <code>roles</code> folder exist.</li>
+        <li>Converts those paths to WSL format.</li>
+        <li>Builds the shell command.</li>
+        <li>Runs <code>ansible-playbook</code> using <code>subprocess.run()</code>.</li>
+        <li>Returns the command result so the API can display the output.</li>
+      </ul>
+      <pre>["wsl", "-d", "Ubuntu", "sh", "-lc", shell_command]</pre>
+      <p>This is the critical bridge between your Django backend and the Ansible automation engine.</p>
+    </section>
+
+    <section>
+      <h2>10. Full Backend Execution Flow</h2>
+      <ol class="flow">
+        <li>User selects hosts in the React frontend.</li>
+        <li>User selects the playbook template.</li>
+        <li>Frontend sends a <code>POST</code> request to <code>/api/installations/launch/</code>.</li>
+        <li>Django validates the payload.</li>
+        <li>Django reads selected hosts and their credentials from PostgreSQL.</li>
+        <li>Django generates a temporary inventory file.</li>
+        <li>Django locates the Ansible repository.</li>
+        <li>Django runs Ansible inside Ubuntu WSL.</li>
+        <li>Ansible connects to the targets and runs the playbook roles.</li>
+        <li>Django captures the command output and stores the result.</li>
+        <li>Frontend displays success, failure, stdout, and stderr.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>11. Backend Files You Currently Rely On</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Why it matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>backend/settings.py</code></td>
+            <td>Project configuration, database, CORS, installed apps</td>
+          </tr>
+          <tr>
+            <td><code>backend/urls.py</code></td>
+            <td>Includes app routes under <code>/api/</code></td>
+          </tr>
+          <tr>
+            <td><code>auto_K8S/models.py</code></td>
+            <td>Database structure</td>
+          </tr>
+          <tr>
+            <td><code>auto_K8S/serializers.py</code></td>
+            <td>Validation and JSON transformation</td>
+          </tr>
+          <tr>
+            <td><code>auto_K8S/views.py</code></td>
+            <td>API logic and playbook launch flow</td>
+          </tr>
+          <tr>
+            <td><code>auto_K8S/services.py</code></td>
+            <td>Dynamic inventory generation and Ansible execution</td>
+          </tr>
+          <tr>
+            <td><code>auto_K8S/urls.py</code></td>
+            <td>App endpoint declarations</td>
+          </tr>
+          <tr>
+            <td><code>requirements.txt</code></td>
+            <td>Backend Python dependencies</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>12. What Is Still Important for Portability</h2>
+      <ul>
+        <li>The database settings are already portable because they come from environment variables.</li>
+        <li>The backend still assumes Ansible runs inside <code>WSL Ubuntu</code> on Windows.</li>
+        <li>The backend still expects a local cloned Ansible repository with <code>ansible.cfg</code>, <code>roles</code>, and <code>playbooks</code>.</li>
+        <li>If you want full portability later, make the Ansible repo path configurable from an environment variable like <code>ANSIBLE_REPO_ROOT</code>.</li>
+        <li>You can also validate credentials before launching to fail earlier when a host has no valid SSH user or password.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>13. Commands Used to Run the Backend</h2>
+      <pre>python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python manage.py makemigrations
+python manage.py migrate
+python manage.py runserver</pre>
+      <p>Database tables are created by migrations, not by writing SQL manually.</p>
+    </section>
+
+    <section>
+      <h2>14. Summary</h2>
+      <p class="good">
+        Your backend is now a simple but solid orchestration layer:
+        PostgreSQL stores the data, Django REST API exposes the endpoints,
+        serializers validate the input, services prepare the inventory and launch Ansible,
+        and the installation result is stored and returned to the frontend.
+      </p>
+      <p>
+        For a first version, the structure is coherent: models are minimal, views are understandable,
+        and the Ansible execution path is separated from the CRUD logic.
+      </p>
+    </section>
+  </div>
+</body>
+</html>
